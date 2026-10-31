@@ -6,3 +6,14 @@ datos/
 .coverage
 htmlcov/
 reportes/
+
+# Robot Framework
+results/
+output.xml
+log.html
+report.html
+
+# Locales (rutas de esta PC / cachés de herramientas)
+.mcp.json
+.robotmcp_artifacts/
+.schemathesis/

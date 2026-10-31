@@ -1,0 +1,58 @@
+# QUÉ ES: workflow REUTILIZABLE con las pruebas de API del módulo G2.
+# QUIÉN LO USA: pruebas.yml (con "uses: ./.github/workflows/_api.yml").
+# QUÉ HACE, en una máquina limpia de GitHub (runner Ubuntu):
+#   1. descarga el código e instala Python y las librerías de prueba;
+#   2. corre pytest: escenarios Gherkin (pytest-bdd) + prueba de contrato (Schemathesis);
+#      los 9 fallos conocidos están marcados como "fallo esperado" con su defecto (DEF-01..04);
+#   3. deja la evidencia: JUnit XML (para herramientas), HTML (para personas) y un
+#      resumen en la página del run; y sube todo como artefacto descargable.
+# No hace falta levantar la app: pytest usa TestClient y Schemathesis la levanta sola.
+name: API (reutilizable)
+
+on:
+  workflow_call:
+
+jobs:
+  api:
+    name: API · pytest-bdd + Schemathesis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Instalar Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Ejecutar las pruebas de API y de contrato
+        run: >-
+          pytest
+          --junitxml=reportes/api/junit.xml
+          --html=reportes/api/reporte.html --self-contained-html
+
+      - name: Copiar el reporte de Schemathesis
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reportes/contrato
+          cp -r reportes/schemathesis/ultimo/. reportes/contrato/ || echo "Sin reporte de Schemathesis"
+
+      - name: Resumen en la página del run
+        if: ${{ !cancelled() }}
+        run: python .github/scripts/resumen.py reportes/api/junit.xml --titulo "Pruebas de API (pytest-bdd + Schemathesis)"
+
+      - name: Guardar los reportes como artefacto
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: reportes-api
+          path: |
+            reportes/api
+            reportes/contrato
+          retention-days: 30

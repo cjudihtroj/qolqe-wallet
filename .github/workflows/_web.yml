@@ -1,0 +1,84 @@
+# QUÉ ES: workflow REUTILIZABLE con las pruebas web E2E del módulo G2.
+# QUIÉN LO USA: pruebas.yml (con "uses: ./.github/workflows/_web.yml").
+# QUÉ HACE, en una máquina limpia de GitHub (runner Ubuntu):
+#   1. instala Python, Node (Playwright corre en Node) y el navegador Chromium;
+#   2. levanta Qolqe en segundo plano (uvicorn) y espera a que responda;
+#   3. corre Robot Framework sin ventana (headless) N veces SEGUIDAS: si alguna falla,
+#      el job falla. Así se demuestra que las pruebas son estables (no frágiles);
+#   4. deja la evidencia: report.html / log.html (con capturas), resumen en la página del
+#      run y artefacto descargable.
+name: Web (reutilizable)
+
+on:
+  workflow_call:
+    inputs:
+      repeticiones:
+        description: "Veces seguidas que se corre la suite"
+        type: number
+        default: 1
+
+jobs:
+  web:
+    name: Web · Robot Framework + Browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PYTHONIOENCODING: utf-8
+      QOLQE_BD: datos/e2e.db
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v5
+
+      - name: Instalar Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Instalar Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Instalar Robot Framework, Browser y Chromium
+        run: |
+          pip install -r requirements.txt -r requirements-e2e.txt
+          rfbrowser init chromium
+
+      - name: Levantar Qolqe en segundo plano
+        run: |
+          nohup uvicorn qolqe.main:app --port 8000 > uvicorn.log 2>&1 &
+          # Esperar a que la app responda (máx. 2 min): espera por CONDICIÓN, no fija.
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8000/api/salud && exit 0
+            sleep 2
+          done
+          echo "Qolqe no levantó"; cat uvicorn.log; exit 1
+
+      - name: Ejecutar las pruebas web (${{ inputs.repeticiones }} vez/veces seguidas)
+        run: |
+          verdes=0
+          for n in $(seq 1 ${{ inputs.repeticiones }}); do
+            echo "::group::Ejecución $n de ${{ inputs.repeticiones }}"
+            # La última ejecución queda como el reporte principal (reportes/web).
+            if [ "$n" -eq "${{ inputs.repeticiones }}" ]; then salida=reportes/web; else salida=reportes/web/ejecucion-$n; fi
+            if robot --outputdir "$salida" --console verbose tests/e2e; then verdes=$((verdes+1)); fi
+            echo "::endgroup::"
+          done
+          echo "### Estabilidad web: $verdes de ${{ inputs.repeticiones }} ejecuciones seguidas en verde" >> "$GITHUB_STEP_SUMMARY"
+          [ "$verdes" -eq "${{ inputs.repeticiones }}" ]
+
+      - name: Resumen en la página del run
+        if: ${{ !cancelled() }}
+        run: |
+          cp uvicorn.log reportes/web/ 2>/dev/null || true
+          python .github/scripts/resumen.py reportes/web/output.xml --titulo "Pruebas web E2E (Robot Framework)"
+
+      - name: Guardar los reportes como artefacto
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: reportes-web
+          path: reportes/web
+          retention-days: 30

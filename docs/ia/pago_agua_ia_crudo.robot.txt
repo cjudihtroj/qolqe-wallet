@@ -1,0 +1,27 @@
+*** Settings ***
+Documentation    Test suite generated from session c5ee4314-b32e-4483-8a08-be0005c7ae96 containing 1 test case for web automation.
+Library         Browser
+Test Tags       e2e    ia    G2    automated    generated    web
+
+*** Test Cases ***
+Ana paga su recibo de agua
+    [Documentation]    Test case that performs click action, performs click action, performs click action, performs click action, performs click action.
+    [Tags]    G2    e2e    ia
+    New Browser    chromium    headless=False    slowMo=500ms
+    New Page    http://localhost:8000/login
+    Http    http://localhost:8000/api/pruebas/reiniciar    method=POST
+    Fill Text    css=[data-testid="input-celular"]    987654321
+    Fill Text    css=[data-testid="input-pin"]    4826
+    Click    css=[data-testid="boton-ingresar"]    # Click on css=[data-testid="boton-ingresar"]
+    Get Url    contains    /inicio
+    Click    css=[data-testid="nav-servicios"]    # Click on css=[data-testid="nav-servicios"]
+    Get Text    css=[data-testid="contador-afiliaciones"]    contains    de 8
+    Select Options By    css=[data-testid="select-empresa"]    value    AGUA
+    Fill Text    css=[data-testid="input-suministro"]    2000000008
+    Click    css=[data-testid="boton-consultar"]    # Click on css=[data-testid="boton-consultar"]
+    Click    css=[data-testid="deuda"] >> nth=0 >> css=[data-testid="boton-pagar-deuda"]    # Click on css=[data-testid="deuda"] >> nth=0 >> css=[data-testid="boton-pagar-deuda"]
+    Get Text    css=[data-testid="pago-total"]    ==    S/ 45.00
+    Click    css=[data-testid="boton-confirmar-pago"]    # Click on css=[data-testid="boton-confirmar-pago"]
+    Get Text    css=[data-testid="comprobante-total"]    ==    S/ 45.00
+    Get Text    css=[data-testid="comprobante-saldo"]    ==    S/ 1,455.00
+    [Teardown]    Close Browser    
