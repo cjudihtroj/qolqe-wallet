@@ -3,7 +3,7 @@
 
 # Matriz de trazabilidad · G2 Pago de servicios
 
-Run #local · commit `local` · rama `local` · 31/10/2026 14:46 (hora de Lima)
+Run [#2](https://github.com/Deyvydt/qolqe-wallet-services/actions/runs/41236061787) · commit [`a57e728`](https://github.com/Deyvydt/qolqe-wallet-services/commit/a57e7285aea91ac08f3dba62b154c43d1e36b629) · rama `main` · 31/10/2026 15:00 (hora de Lima)
 
 Cada fila une una **historia de usuario (HU)** con el **caso de prueba** que la verifica, el **nivel** donde se prueba y el **resultado de esta ejecución**.
 
