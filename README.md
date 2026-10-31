@@ -193,3 +193,112 @@ IA.md                     # Declaración de uso de IA
 ```
 
 En `docs/` encontrarán la especificación de requisitos, la plantilla del informe del proyecto y la plantilla del reporte de defectos; en la raíz, la plantilla de `IA.md`.
+
+---
+
+## 7. Pruebas del módulo G2 · Pago de servicios (Entrega 1)
+
+Pruebas de API automatizadas del módulo **G2**, con foco en las HU de prioridad **Alta**: **HU-G2-01 Consultar deudas** y **HU-G2-02 Pagar una deuda**. Además, como extra, HU-G2-05 (débito automático) y HU-G2-07 CA2 (comprobante de otro usuario).
+
+| Tipo | Herramienta | De dónde salen los casos |
+|---|---|---|
+| **Funcional** | pytest + **pytest-bdd** + httpx (TestClient) | Escenarios Gherkin en español (`features/*.feature`) escritos a partir de las HU, con partición de equivalencia y valores límite |
+| **Técnica** | **Schemathesis** (dentro de pytest) | Se generan automáticamente desde el contrato OpenAPI (`/openapi.json`) de `POST /api/servicios/pagos` |
+
+### 7.1 Instalación y ejecución
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate              # macOS/Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest                              # corre TODO: funcional + técnico + resúmenes
+```
+
+No hace falta levantar la app: las pruebas funcionales usan TestClient y la prueba técnica levanta Qolqe sola en un puerto libre. Las pruebas usan su propia base de datos (`datos/pruebas.db`), así que no tocan la de la demo. Una ejecución completa tarda unos 45 segundos.
+
+| Comando | Qué ejecuta |
+|---|---|
+| `pytest` | Todo, y al final los dos resúmenes en la terminal |
+| `pytest -v` | Igual, pero con una línea por caso |
+| `pytest -v -m "HU-G2-02"` | Solo **Pagar una deuda**. Sirve cualquier etiqueta del `.feature`: `HU-G2-01`, `HU-G2-05`, `CA1`, `valor-limite`, `seguridad`… |
+| `pytest -m schemathesis` | Solo la prueba técnica desde el contrato |
+| `pytest --html=reportes/pytest/reporte.html --self-contained-html` | Todo, más el reporte HTML funcional |
+| `$env:SCHEMATHESIS_MODO="aleatorio"; pytest -m schemathesis` | Prueba técnica con casos nuevos al azar. Por defecto es **determinista**: los mismos casos en cada ejecución |
+
+### 7.2 Resúmenes automáticos en la terminal
+
+Cada `pytest` calcula los resúmenes con los resultados de **esa** ejecución (lo hace `tests/conftest.py`):
+
+- **RESUMEN FUNCIONAL:** casos, pasan y fallan por **historia de usuario** y por **técnica**. Luego, cada fallo con su mensaje *esperado vs. obtenido* y el **defecto** al que corresponde (DEF-01 a DEF-04). Un fallo que no corresponda a un defecto ya conocido aparece como **`NUEVO, analizar`**: eso indica una regresión o un defecto nuevo.
+- **RESUMEN TÉCNICO:** número de casos generados por Schemathesis, errores 500 y una tabla por **validación de entrada** con cuántos casos hubo, si la API respondió bien y en qué filas del reporte están.
+
+### 7.3 Reportes
+
+| Reporte | Cómo se genera | Cómo se abre |
+|---|---|---|
+| Funcional (pytest-html) | `pytest --html=reportes/pytest/reporte.html --self-contained-html` | `start reportes\pytest\reporte.html` |
+| Funcional, solo pagar deuda | `pytest -m "HU-G2-02" --html=reportes/pytest/hu-g2-02.html --self-contained-html` | `start reportes\pytest\hu-g2-02.html` |
+| Técnico (Schemathesis) | Automático en cada `pytest` o `pytest -m schemathesis` | `start reportes\schemathesis\ultimo\reporte.html` |
+
+`reportes/` está en `.gitignore`: es evidencia local y se regenera en cada ejecución. El reporte técnico incluye la tabla *"Dónde está cada validación de entrada"* y el detalle de cada caso: cuerpo enviado, estado HTTP y respuesta.
+
+### 7.4 Casos funcionales de HU-G2-02 · Pagar una deuda
+
+Archivo: `features/g2_pagar_deuda.feature` (20 casos).
+
+| Escenario | CA / regla | Técnica | Casos |
+|---|---|---|---|
+| Pago exitoso antes del vencimiento (comprobante y saldo) | CA1, CA4 | Camino feliz | 1 |
+| Mora de 0.5 % diario con tope de 10 %: días −1, 0, 1, 19, 20, 21 y 60 | CA1 · R-G2-03 | Valores límite | 7 |
+| El saldo debe cubrir monto + mora: un céntimo menos / saldo exacto | CA1 · RN-08 | Valores límite | 2 |
+| Deuda inexistente → 404 `DEUDA_NO_ENCONTRADA` | CA2 | Partición | 1 |
+| Deuda ya pagada → 409 `DEUDA_YA_PAGADA` (el saldo no cambia) | CA2 | Efecto | 1 |
+| Deuda en cobranza (61 días) → 422 `DEUDA_EN_COBRANZA` (el saldo no cambia) | CA2 · R-G2-04 | Efecto | 1 |
+| Dos pagos simultáneos: uno 201 y otro 409 | CA3 | Concurrencia | 1 |
+| El pago genera un movimiento con el mismo código | CA4 · RN-10 | Efecto | 1 |
+| Comprobante de otro usuario → 404 | HU-G2-07 CA2 | Seguridad | 1 |
+| Pagar sin token → 401 | — | Seguridad | 1 |
+| `deuda_id` con tipo inválido: `{}`, `"abc"`, `null` → 422 | — | Técnica (partición) | 3 |
+
+El resto de los casos está en `features/g2_consultar_deudas.feature` (HU-G2-01: empresa, longitud del suministro de 7, 8, 12 y 13 dígitos, formato, orden, campos, estado a los 59, 60 y 61 días, sin deudas) y en `features/g2_debito_automatico.feature` (HU-G2-05).
+
+### 7.5 Validaciones de entrada: dónde se prueba cada una
+
+| Validación | Funcional (`.feature`, diseñadas a mano) | Técnica (Schemathesis, generadas desde el contrato) |
+|---|---|---|
+| Obligatoriedad (`deuda_id` requerido) | `{}` → 422 | Objetos sin `deuda_id` → 422 |
+| Tipo de dato (`deuda_id` entero, cuerpo objeto) | `"abc"`, `null` → 422 | Texto, decimales, booleanos, listas y cuerpos que no son objeto → 422 |
+| Rango | Id inexistente (999999) → 404 | Ids cero o negativos → no paga nada |
+| Longitud y formato | Suministro de 7, 8, 12 y 13 dígitos; letras, espacios y signo (HU-G2-01) | — (el contrato no define longitudes) |
+| Cabecera de autenticación | Sin token → 401 | Sin token y token inválido → 401 |
+| Cabecera `Content-Type` | — | Sin `Content-Type` → 422 |
+| Métodos HTTP | — | PUT, PATCH, OPTIONS y TRACE en la ruta de pago → 405 |
+| Robustez | — | Ningún caso responde 500 |
+
+### 7.6 Resultados y defectos
+
+| Tipo | Casos | Pasan | Fallan |
+|---|---|---|---|
+| Funcional (incluye la prueba de humo) | 42 | 33 | 9 → 4 defectos |
+| Funcional · solo HU-G2-02 | 20 | 16 | 4 → DEF-02 y DEF-03 |
+| Técnico · `POST /api/servicios/pagos` | 61 generados | Todos responden bien | 0 errores 500 · 1 observación (cabecera `Allow`) |
+
+| ID | Defecto | Severidad |
+|---|---|---|
+| DEF-01 | Se acepta un suministro de 13 dígitos (R-G2-01) | Baja |
+| DEF-02 | Se cobra mora el mismo día del vencimiento: los días de atraso se cuentan +1 (R-G2-03) | Alta |
+| DEF-03 | Una deuda con 60 días pasa a cobranza y no se puede pagar (R-G2-04) | Alta |
+| DEF-04 | El débito automático paga deudas ya vencidas y sin mora (HU-G2-05 CA4) | Media |
+
+Las fallas son esperadas: cada una evidencia un defecto real. El detalle, con pasos para reproducir, está en `docs/defectos.md`, y el informe en `docs/informe.md`.
+
+### 7.7 Archivos de las pruebas
+
+| Archivo | Qué es |
+|---|---|
+| `features/g2_*.feature` | Escenarios Gherkin por HU, con etiquetas `@HU-G2-0x @CAn @técnica` para la trazabilidad |
+| `tests/api/conftest.py` | Pasos de pytest-bdd: conectan cada frase del Gherkin con una llamada a la API y su verificación |
+| `tests/api/test_g2_pago_servicios.py` | Convierte cada escenario de los `.feature` en una prueba de pytest |
+| `tests/tecnico/test_contrato_schemathesis.py` | Prueba técnica: levanta la app, ejecuta Schemathesis y falla si hay un 500 o una validación mal respondida |
+| `tests/tecnico/clasificacion_contrato.py` | Clasifica los casos de Schemathesis por validación de entrada y genera su reporte HTML |
+| `tests/conftest.py` | Base de datos propia para las pruebas y los resúmenes automáticos de la terminal |
