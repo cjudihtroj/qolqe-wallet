@@ -302,3 +302,4 @@ Las fallas son esperadas: cada una evidencia un defecto real. El detalle, con pa
 | `tests/tecnico/test_contrato_schemathesis.py` | Prueba técnica: levanta la app, ejecuta Schemathesis y falla si hay un 500 o una validación mal respondida |
 | `tests/tecnico/clasificacion_contrato.py` | Clasifica los casos de Schemathesis por validación de entrada y genera su reporte HTML |
 | `tests/conftest.py` | Base de datos propia para las pruebas y los resúmenes automáticos de la terminal |
+Demo en vivo: exposicion Entrega 2
