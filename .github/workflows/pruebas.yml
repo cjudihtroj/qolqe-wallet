@@ -1,0 +1,108 @@
+# QUÉ ES: el PIPELINE principal (workflow de GitHub Actions) de las pruebas del módulo G2.
+# CUÁNDO CORRE (eventos):
+#   - en cada push a main            → integración continua: nadie tiene que acordarse de probar
+#   - en cada pull request hacia main → quality gate: si algo sale rojo, el PR no se puede fusionar
+#   - a mano (botón "Run workflow")   → elegir qué suite correr: todas, solo api o solo web
+# CÓMO ESTÁ ARMADO: este archivo solo ORQUESTA. El trabajo lo hacen dos workflows reutilizables:
+#   _api.yml  → pruebas de API (pytest-bdd) + prueba de contrato (Schemathesis)
+#   _web.yml  → pruebas web E2E (Robot Framework + Browser)
+#   y el job "reportes" publica toda la evidencia en GitHub Pages (solo en main).
+# ORDEN (fail fast: lo rápido y barato primero):  api ──► web ──► reportes
+#   Si api falla, web se omite (skipped): no se gasta en lo caro si ya falló lo barato.
+name: Pruebas G2
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "¿Qué pruebas ejecutar?"
+        type: choice
+        options: [todas, api, web]
+        default: todas
+      repeticiones:
+        description: "Veces seguidas que se corre la suite web (3 = prueba de estabilidad)"
+        type: choice
+        options: ["1", "3"]
+        default: "3"
+
+# Si llega un push nuevo a la misma rama, se cancela el run anterior (no tiene sentido terminarlo).
+concurrency:
+  group: pruebas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: API
+    # En push y PR "inputs.suite" está vacío, así que corre siempre.
+    if: inputs.suite != 'web'
+    uses: ./.github/workflows/_api.yml
+
+  web:
+    name: Web
+    needs: api
+    # Corre si la API pasó, o si se pidió "solo web" (entonces la API queda omitida).
+    if: >-
+      !cancelled() && inputs.suite != 'api' &&
+      (needs.api.result == 'success' || needs.api.result == 'skipped')
+    uses: ./.github/workflows/_web.yml
+    with:
+      # En push/PR se corre 3 veces seguidas: así cada run demuestra que la suite NO es frágil.
+      repeticiones: ${{ fromJSON(inputs.repeticiones || '3') }}
+
+  reportes:
+    name: Publicar reportes
+    needs: [api, web]
+    # Solo en main y solo si nada falló (lo omitido por "solo api/web" no bloquea).
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write      # para publicar en GitHub Pages
+      id-token: write   # GitHub Pages lo exige para verificar quién publica
+    environment:
+      name: github-pages
+      url: ${{ steps.publicar.outputs.page_url }}
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Descargar los reportes de los jobs api y web
+        uses: actions/download-artifact@v4
+        with:
+          pattern: reportes-*
+          merge-multiple: true
+          path: reportes
+
+      - name: Armar el sitio (reportes + matriz de trazabilidad + portada)
+        run: |
+          mkdir -p sitio
+          [ -d reportes/api ] && cp -r reportes/api sitio/api
+          [ -d reportes/contrato ] && cp -r reportes/contrato sitio/contrato
+          [ -d reportes/web ] && cp -r reportes/web sitio/web
+          python .github/scripts/trazabilidad.py \
+            --api reportes/api/junit.xml --web reportes/web/output.xml \
+            --salida-md sitio/trazabilidad.md --salida-html sitio/trazabilidad.html --summary
+          python .github/scripts/portada.py --sitio sitio
+
+      - name: Empaquetar el sitio para GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: sitio
+
+      - name: Publicar en GitHub Pages
+        id: publicar
+        uses: actions/deploy-pages@v4

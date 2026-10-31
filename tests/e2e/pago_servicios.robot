@@ -19,7 +19,7 @@ ${PIN_ANA}        4826
 Ana paga su recibo de luz y ve el comprobante
     [Documentation]    Deuda ELECTRO 10000001: S/ 120.00, vence en 10 días (sin mora).
     ...                Saldo inicial de Ana: S/ 1,500.00 → saldo final: S/ 1,380.00
-    [Tags]    G2    e2e    happy-path
+    [Tags]    G2    e2e    happy-path    HU-G2-01    HU-G2-02    CA1    CA4    CP-W01
     Given Ana ha iniciado sesion
     When consulta la deuda del suministro    ELECTRO    10000001
     And paga la deuda por un total de    S/ 120.00

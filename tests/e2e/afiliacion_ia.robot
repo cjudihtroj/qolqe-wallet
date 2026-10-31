@@ -10,7 +10,7 @@ Test Teardown     Cerrar Navegador
 *** Test Cases ***
 Ana afilia un servicio de agua
     [Documentation]    HU-G2-03. Generado con IA; corregido por el equipo (ver README).
-    [Tags]    G2    e2e    ia
+    [Tags]    G2    e2e    ia    HU-G2-03    CA1    CP-W03
     Abrir Pagina De Login
     Iniciar Sesion    987654321    4826
     Deberia Estar En Inicio
