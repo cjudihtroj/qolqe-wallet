@@ -73,19 +73,28 @@ jobs:
       url: ${{ steps.publicar.outputs.page_url }}
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Instalar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
-      - name: Descargar los reportes de los jobs api y web
-        uses: actions/download-artifact@v4
+      # Cada job dejó sus reportes como artefacto; aquí se juntan. (Si se pidió "solo api" o
+      # "solo web", falta uno: continue-on-error evita que eso detenga la publicación.)
+      - name: Descargar los reportes de la API (trae api/ y contrato/)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
         with:
-          pattern: reportes-*
-          merge-multiple: true
+          name: reportes-api
           path: reportes
+
+      - name: Descargar los reportes web
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: reportes-web
+          path: reportes/web
 
       - name: Armar el sitio (reportes + matriz de trazabilidad + portada)
         run: |

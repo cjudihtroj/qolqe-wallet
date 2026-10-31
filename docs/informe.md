@@ -12,7 +12,7 @@
 | Integrantes | David Marcelo (trabajo individual) |
 | Módulo | **G2 · Pago de servicios y afiliaciones** |
 | Herramienta de API | **pytest + pytest-bdd + httpx** (funcionales) y **Schemathesis** (técnicas, desde el contrato OpenAPI) |
-| Herramienta web | (Parte 2) |
+| Herramienta web | **Robot Framework + Browser Library** (Playwright) |
 | Herramienta de rendimiento | (Parte 3) |
 
 **Alcance y nivel de prueba.** El nivel es **prueba de API**, que también es prueba de integración de componentes. Se envían solicitudes HTTP a la interfaz pública y se verifican el estado, el cuerpo, el contrato y el efecto.
@@ -80,7 +80,33 @@ schemathesis run http://localhost:8000/openapi.json -H "Authorization: Bearer <t
 Evidencia: `reportes/pytest/reporte.html` y `reportes/schemathesis/`.
 
 ## 3. Pruebas web y CI/CD
-*(Parte 2)*
+
+### Pruebas web (E2E)
+| Campo | Valor |
+|---|---|
+| Herramienta | **Robot Framework + Browser Library** (Playwright, Chromium) |
+| Criterio para elegir qué va por web | Por web va lo que el usuario **ve y hace en pantalla** (flujo completo y comprobante). Los cálculos y casos técnicos (mora por día, concurrencia, seguridad, contrato) se quedan en la API, que es más rápida y estable (pirámide de pruebas) |
+| Alcance | 3 casos: CP-W01 pagar luz (HU-G2-01 + HU-G2-02 CA1/CA4), CP-W02 pagar agua (ídem), CP-W03 afiliar un servicio (HU-G2-03 CA1) |
+
+**Patrón mantenible: Page Object en 3 capas.** (1) El caso dice **qué** se prueba en Given/When/Then; (2) las keywords de negocio traducen cada paso; (3) los Page Objects (`tests/e2e/pages/`) saben **cómo** se usa cada pantalla (localizadores `data-testid` + acciones). Si una pantalla cambia, se corrige un solo archivo. A gran escala la alternativa es **Screenplay** (actores, tareas, preguntas); para este alcance agregaría complejidad sin beneficio.
+
+**Sin esperas fijas.** No hay `Sleep`: las aserciones de Browser reintentan solas hasta 10 s y se espera por **condición** (elemento visible, contador cargado). Cada prueba reinicia los datos por API (independencia).
+
+**Estabilidad: pasa 3 veces seguidas.** El pipeline corre la suite web **3 veces seguidas en cada run**; si una sola falla, el job falla.
+
+### Pipeline de CI/CD (GitHub Actions)
+| Archivo | Rol |
+|---|---|
+| `.github/workflows/pruebas.yml` | Orquestador. Eventos: push a `main`, pull request a `main` y manual (elige `todas`, `api` o `web`) |
+| `.github/workflows/_api.yml` | Reutilizable: pytest-bdd + Schemathesis → JUnit XML + HTML + resumen |
+| `.github/workflows/_web.yml` | Reutilizable: levanta Qolqe, corre Robot 3 veces seguidas → report/log + capturas + resumen |
+| `.github/scripts/` | `resumen.py` (resumen en la página del run), `trazabilidad.py` (matriz), `portada.py` (portada de reportes) |
+
+Orden (*fail fast*): **api → web → reportes**. Si la API falla, la web se omite. El job `reportes` (solo en `main`) publica toda la evidencia en **GitHub Pages**: https://deyvydt.github.io/qolqe-wallet-services/
+
+**Quality gate.** Todas las pruebas pasan, salvo los fallos esperados ligados a un defecto reportado (`xfail strict` con su `DEF-0X`). Si un defecto se corrige, la prueba pasa sin esperarlo (XPASS) y el pipeline se pone rojo para actualizar la lista. Un fallo no listado es nuevo y también bloquea. La rama `main` está protegida: un PR no se fusiona si el pipeline no está en verde.
+
+**Trazabilidad.** Las etiquetas `@HU-G2-xx @CAx` del Gherkin y `HU-G2-xx CP-Wxx` de Robot viajan en el JUnit XML / output.xml; el pipeline genera en cada run la matriz HU → caso → nivel → resultado → defecto (`trazabilidad.html` en Pages, resumen del run y `docs/trazabilidad.md`).
 
 ## 4. Pruebas de rendimiento
 *(Parte 3)*

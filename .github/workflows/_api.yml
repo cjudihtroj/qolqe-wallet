@@ -19,10 +19,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Descargar el código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Instalar Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -49,7 +49,7 @@ jobs:
 
       - name: Guardar los reportes como artefacto
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: reportes-api
           path: |
